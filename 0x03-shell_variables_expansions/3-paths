@@ -1,2 +1,2 @@
 #!/bin/bash
-echo "$PATH" | tr ':' '\n' | grep -c '.*'
+/usr/bin/printf "%s" "$PATH" | /usr/bin/tr ':' ' ' | /usr/bin/wc -w

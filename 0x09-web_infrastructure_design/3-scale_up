@@ -1,0 +1,114 @@
++----------------+       +-------------------+       +--------------------+
+|                |       |                   |       |                    |
+| User's Browser | ----> |   DNS Request     | ----> |   www.foobar.com   |
+| (www.foobar.com)|       |                   |       |   (Public IP)      |
+|                |       |                   |       |                    |
++----------------+       +-------------------+       +---------+----------+
+                                                                 |
+                                                                 |
+                                                                 V
++--------------------------------------------------------------------------------+
+|                             FIREWALL 1                                         |
+|                 (Edge/Network Firewall - Public Facing)                        |
+|                 (Allows HTTPS (443) to LB Nodes only)                          |
++--------------------------------------------------------------------------------+
+                                       |
+                                       | HTTPS (Port 443)
+                                       V
+        +-------------------------------------------------------------+
+        |                  HAProxy Load Balancer Cluster            |
+        |      (Active-Passive or Active-Active Configuration)      |
+        +------------------+------------------+---------------------+
+                           |                  |
+           (VRRP/Keepalived for VIP)          |
+                           |                  |
+              +------------+------------+     +-----------+-----------+
+              |           SERVER 1        |     |          SERVER 2       |
+              | (HAProxy Active/Primary)  |     | (HAProxy Passive/Backup) |
+              |      SSL Termination      |     |      Monitoring Client  |
+              |      Monitoring Client    |     |                           |
+              +---------------------------+     +---------------------------+
+                               |
+                               | (Internal Network) HTTP (Port 80)
+                               V
++--------------------------------------------------------------------------------+
+|                             FIREWALL 2                                         |
+|                 (Internal/DMZ Firewall - Between LB and Web/App Servers)       |
+|                 (Allows HTTP (80) from LB Nodes to Web/App Servers only)       |
++--------------------------------------------------------------------------------+
+                                       |
+                                       |
+                   +-------------------+-------------------+
+                   |                   |                   |
+                   V                   V                   V
+         +----------------+    +----------------+    +----------------+
+         |      SERVER 3    |  |      SERVER 4    |  |                |
+         | Nginx Web Server |  | Application Server |  |    (Optional)  |
+         |  (Serves Static) |  | (Runs your code)   |  | Add more App/Web |
+         |  Application Server 1 |  | Monitoring Client  |  | Servers here  |
+         |  Monitoring Client |  |                    |  |                |
+         +----------------+    +----------------+    +----------------+
+                                       |
+                                       | (Internal Network) MySQL (Port 3306)
+                                       V
++--------------------------------------------------------------------------------+
+|                             FIREWALL 3                                         |
+|                 (Internal/Database Firewall - Between App and DB Servers)      |
+|                 (Allows MySQL (3306) from App Servers to DB only)              |
++--------------------------------------------------------------------------------+
+                                       |
+                                       |
+                                       V
+                         +--------------------------+
+                         |      MySQL Database      |
+                         |      (Primary Node)      |
+                         |      (Server 4, or       |
+                         |     dedicated DB server) |
+                         |     Monitoring Client    |
+                         +------------+-------------+
+                                      |
+                                      | MySQL Replication (3306)
+                                      V
+                         +--------------------------+
+                         |      MySQL Database      |
+                         |     (Replica Node)       |
+                         |      (Server X, or       |
+                         |     dedicated DB server) |
+                         |     Monitoring Client    |
+                         +--------------------------+
+
+
+II. Application Server vs. Web Server
+Web Server (e.g., Nginx, Apache HTTP Server):
+Purpose: Primarily serves static content (HTML, CSS, JavaScript, images) directly to clients. It also acts as a reverse proxy, forwarding dynamic requests to the application server. Web servers are highly optimized for handling many concurrent connections efficiently.
+Role in Infrastructure: Sits between the load balancer and the application server. It offloads static file serving from the application server and can handle SSL termination.
+Application Server (e.g., Gunicorn/uWSGI + Django, Node.js, PHP-FPM):
+Purpose: Executes the application logic. It processes dynamic requests (e.g., API calls, database queries), interacts with the database, performs business logic, and generates dynamic content.
+Role in Infrastructure: Receives dynamic requests from the web server (or directly from the load balancer in simpler setups) and processes them. It's typically resource-intensive (CPU, memory) due to running application code.
+III. Explanation of Each Additional Element and its Purpose
+This design introduces a fourth server and specific redundancy for the Load Balancer, along with a clearer separation of concerns.
+Additional Server (Server 2):
+Why added: This fourth server is specifically added to create a highly available Load Balancer cluster. In the previous design, the single HAProxy server was a Single Point of Failure (SPOF). By adding a second server and configuring it to be a redundant load balancer, we ensure that if Server 1 (the primary load balancer) fails, Server 2 (the backup load balancer) can immediately take over, preventing downtime for incoming traffic.
+Load-Balancer (HAproxy) configured as a cluster with the other one (Servers 1 & 2):
+Why added: To eliminate the Load Balancer as a Single Point of Failure and enhance the overall reliability and availability of the infrastructure.
+Configuration: Typically achieved using technologies like VRRP (Virtual Router Redundancy Protocol) or tools like Keepalived. These protocols assign a single Virtual IP (VIP) address that floats between the active and passive load balancer nodes.
+Active-Passive Setup (Common for HAProxy Clustering): One HAProxy instance (on Server 1) is active and handles all traffic for the VIP. The other HAProxy instance (on Server 2) is passive, continuously monitoring the active node. If the active node fails, the passive node automatically takes over the VIP and begins processing traffic. This ensures high availability.
+(While Active-Active is possible for load balancers, it's more complex to manage and often unnecessary for this scale if availability is the primary concern, as opposed to doubling throughput.)
+Split components (web server, application server, database) with their own server:
+Why added: This is a key improvement for scalability, resource management, and security.
+Web Server (Nginx on Server 3): Dedicated to handling incoming HTTP/S requests, serving static content, and efficiently proxying dynamic requests. Separating it from the load balancer allows the LB to focus purely on traffic distribution and SSL termination (if performed there).
+Application Server(s) (on Server 3 & 4): Each server running application code can be scaled independently based on CPU and memory demands of your application logic. By dedicating servers to this role (even if one server runs multiple app instances), we prevent resource contention with the database.
+Database (MySQL on Server 4): A dedicated server for the database ensures that its intensive disk I/O and CPU requirements don't compete with the web or application servers. This significantly improves database performance and stability. It also enhances security by providing a clear isolation boundary.
+Benefits of Splitting:
+Resource Isolation: Components won't compete for the same CPU, memory, or disk resources, leading to more predictable performance.
+Independent Scaling: You can scale the web servers, application servers, or database servers independently based on the specific bottlenecks of your application. If you need more application processing power, you add more application servers without affecting your web servers or database.
+Improved Security: Each layer is isolated behind its own firewall rules (Firewall 2 and Firewall 3), reducing the attack surface. A compromise of one layer is less likely to immediately affect other layers.
+Easier Maintenance: Components can be updated or maintained with less impact on other parts of the system.
+IV. Issues with this Infrastructure
+While significantly improved, this infrastructure still has areas that could be further enhanced for even greater resilience, scalability, and security:
+Single Point of Failure (SPOF) for MySQL Writes: Although we have a MySQL Primary-Replica setup, both are shown on "Server 4" (or a single dedicated DB server). This means if the physical server hosting the database fails, both the Primary and Replica might go down, leading to an outage for all write operations. True database hardware redundancy requires the Primary and Replica nodes to be on separate physical servers.
+Limited Application Server Redundancy (If Server 3 hosts all): The diagram shows "Application Server 1" on Server 3. While two application servers are listed in the diagram (Application Server 1 and Application Server 2), if they both live on the same physical server (Server 3), that server becomes a SPOF for the entire application layer. A single server failure takes down both instances. For higher availability, these application servers should ideally reside on separate physical machines.
+Potential for Web/Application Server Resource Contention (on Server 3): Although Nginx and the application server are separated from the database, they are still co-located on Server 3. While this is a common optimization to save server count, if either Nginx becomes extremely busy (e.g., serving a massive amount of static content) or the application server experiences high CPU/memory load, they could contend for resources on Server 3, potentially degrading performance.
+No Automated Database Failover: While a Primary-Replica setup provides a replica, the diagram doesn't explicitly show an automated failover mechanism (like Orchestrator or a custom script) to promote a replica to primary in case of primary failure. Manual intervention would be required, leading to recovery time objective (RTO).
+No CDN (Content Delivery Network): Static assets are served directly from Nginx. For a global website, a CDN would significantly improve latency for users far from the server, reduce load on the Nginx server, and provide an additional layer of caching and potentially DDoS protection.
+Backup Strategy Not Explicit: While volumes help persist data, a robust backup and recovery strategy (e.g., off-site backups, point-in-time recovery) is not explicitly detailed.

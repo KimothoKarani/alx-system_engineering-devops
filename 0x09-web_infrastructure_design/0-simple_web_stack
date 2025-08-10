@@ -1,0 +1,93 @@
++----------------+       +-------------------+       +--------------------+
+|                |       |                   |       |                    |
+| User's Browser | ----> |   DNS Request     | ----> |   www.foobar.com   |
+| (www.foobar.com)|       |                   |       |                    |
+|                |       |                   |       |                    |
++----------------+       +-------------------+       +---------+----------+
+                                                                 |
+                                                                 | (DNS resolves to 8.8.8.8)
+                                                                 V
+                           +-------------------------------------+
+                           |             SINGLE SERVER           |
+                           |             IP: 8.8.8.8             |
+                           +-------------------------------------+
+                           |             Web Server              |
+                           |             (Nginx)                 |
+                           |             Port 80 (HTTP)          |
+                           +-------------------------------------+
+                           |          Application Server         |
+                           |          (Your Code Base)           |
+                           | (e.g., Gunicorn/uWSGI for Django)   |
+                           +-------------------------------------+
+                           |              Database               |
+                           |              (MySQL)                |
+                           +-------------------------------------+
+
+
+### II. Explanation of Specifics about this Infrastructure
+
+*   **What is a server:**  
+    A server is a powerful computer program or a machine that manages network resources and provides services to other computers (clients) connected to the network. In this context, it refers to the physical or virtual machine that hosts all the components of the website.
+    
+*   **What is the role of the domain name (**  
+    The domain name serves as an easily memorable and user-friendly address for your website on the internet. Instead of remembering complex IP addresses (like 8.8.8.8), users can type www.foobar.com into their browser. The Domain Name System (DNS) translates this human-readable domain name into the numerical IP address that computers use to locate the server.
+    
+*   **What type of DNS record**   
+    In www.foobar.com, the www part is typically a **CNAME (Canonical Name) record**. A CNAME record is an alias that points one domain or subdomain to another domain. So, www.foobar.com might be a CNAME pointing to foobar.com.  
+    However, if www.foobar.com is configured to point directly to an IP address (like 8.8.8.8 as specified), then www is configured as an **A record (Address Record)**. An A record maps a domain name directly to an IPv4 address. Given the requirement for www.foobar.com to point to 8.8.8.8, it is specifically an A record in this setup.
+    
+*   **What is the role of the web server (Nginx):**  
+    The web server (Nginx in this case) is the first point of contact for incoming client requests. Its primary roles are:
+    
+    *   **Serving Static Files:** Efficiently delivers static content like HTML files, CSS stylesheets, JavaScript files, and images directly to the user's browser.
+        
+    *   **Reverse Proxying:** For dynamic requests (e.g., a user logging in or submitting a form), Nginx acts as a reverse proxy, forwarding these requests to the application server. It then receives the response from the application server and sends it back to the client.
+        
+    
+*   **What is the role of the application server:**  
+    The application server runs your website's dynamic code (your codebase). Its role is to:
+    
+    *   **Process Dynamic Requests:** Receives requests from the web server and executes the application logic (e.g., processing user logins, handling API calls, generating dynamic web pages).
+        
+    *   **Interact with the Database:** Connects to the database to store, retrieve, or update data as required by the application logic.
+        
+    *   **Generate Responses:** Creates the dynamic content (e.g., HTML, JSON) to be sent back to the web server, which then forwards it to the client.
+        
+    
+*   **What is the role of the database (MySQL):**  
+    The database (MySQL) is responsible for storing and organizing all the persistent data of your website. This includes:
+    
+    *   **User Information:** Usernames, passwords (hashed), profiles.
+        
+    *   **Content:** Blog posts, product information, messages, etc.
+        
+    *   **Application Data:** Any other structured data that your application needs to function and that persists even after the application process restarts. It allows for efficient retrieval and manipulation of this data.
+        
+    
+*   **What is the server using to communicate with the computer of the user requesting the website:**  
+    The server uses **HTTP (Hypertext Transfer Protocol)** to communicate with the user's computer (web browser) over **TCP/IP (Transmission Control Protocol/Internet Protocol)**. HTTP is the application-layer protocol for transmitting hypermedia documents, and TCP/IP provides the fundamental network communication infrastructure (establishing connections and routing data packets over the internet). In this simple setup, it's typically HTTP on port 80.
+    
+
+### III. Issues with this Infrastructure
+
+*   **Single Point of Failure (SPOF):**
+    
+    *   The entire server is a SPOF. If the single server fails due to hardware malfunction, software crash, or power outage, the entire website www.foobar.com becomes inaccessible. There is no redundancy.
+        
+    *   Each component (Nginx, Application Server, MySQL) also represents an individual SPOF. If Nginx crashes, if the application server process stops responding, or if MySQL becomes corrupted, the entire website functionality will be impaired.
+        
+    
+*   **Downtime when Maintenance Needed:**
+    
+    *   Any planned maintenance (e.g., applying operating system updates, deploying new versions of your codebase, restarting the web server for configuration changes, or performing database backups) will require taking the entire single server offline or restarting services.
+        
+    *   This directly translates to downtime for the website, making it unavailable to users during these periods.
+        
+    
+*   **Cannot Scale if Too Much Incoming Traffic:**
+    
+    *   The single server has finite computing resources (CPU, RAM, disk I/O, network bandwidth).
+        
+    *   If the website experiences a sudden surge in traffic or consistently high load, the single server will become overwhelmed. This leads to degraded performance (slow response times, errors) and eventually to the server crashing, making the website unavailable.
+        
+    *   There is no mechanism to distribute incoming requests across multiple servers or to add more computational power horizontally. Scaling up (adding more resources to the single server) is possible, but eventually hits hardware limits and can be costly.

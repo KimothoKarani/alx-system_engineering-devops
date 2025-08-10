@@ -6,7 +6,7 @@
 +----------------+       +-------------------+       +---------+----------+
                                                                  |
                                                                  |
-                                                                 v
+                                                                 V
 +--------------------------------------------------------------------------------+
 |                             FIREWALL 1                                         |
 |                 (Edge/Network Firewall - Public Facing)                        |
@@ -14,7 +14,7 @@
 +--------------------------------------------------------------------------------+
                                        |
                                        | HTTPS (Port 443)
-                                       v
+                                       V
                      +---------------------------------------+
                      |             HAProxy                   |
                      |             (Load Balancer)           |
@@ -23,7 +23,7 @@
                      +-------------------+-------------------+
                                          |
                                          | (Internal Network) HTTP (Port 80)
-                                         v
+                                         V
 +--------------------------------------------------------------------------------+
 |                             FIREWALL 2                                         |
 |                 (Internal/DMZ Firewall - Between LB and Web Servers)           |
@@ -33,7 +33,7 @@
                                        |
                    +-------------------+-------------------+
                    |                   |                   |
-                   v                   v                   v
+                   V                   V                   V
          +----------------+    +----------------+    +----------------+
          | Nginx Web Server |  | Application Server 1 | Application Server 2 |
          | (Server 1)     |  | (Server 2)       | (Server 3)       |
@@ -55,7 +55,7 @@
 +--------------------------------------------------------------------------------+
                                    |
                                    |
-                                   v
+                                   V
                          +--------------------------+
                          |       MySQL Database     |
                          |      (Primary Node)      |
@@ -64,7 +64,7 @@
                          +------------+-------------+
                                       |
                                       | MySQL Replication (3306)
-                                      v
+                                      V
                          +--------------------------+
                          |       MySQL Database     |
                          |     (Replica Node)       |
@@ -110,7 +110,7 @@ This design significantly improves security and visibility compared to the previ
         1.  Read the Nginx access logs.
         2.  Parse each log entry to extract relevant information (timestamp, request method, URL, status code).
         3.  Send these parsed log entries to the central monitoring system.
-        The monitoring system can then aggregate these logs over time, count the number of requests per second, and display it as a QPS metric on a dashboard. For real-time metrics, Nginx's stub_status module can also be enabled and scraped by a metric collector to get current request statistics.
+        The monitoring system can then aggregate these logs over time, count the number of requests per second, and display it as a QPS metric on a dashboard. For real-time metrics, Nginx's `stub_status` module can also be enabled and scraped by a metric collector to get current request statistics.
 
 ### III. Issues with this Infrastructure
 

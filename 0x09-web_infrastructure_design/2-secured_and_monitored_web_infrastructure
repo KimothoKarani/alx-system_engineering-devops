@@ -1,0 +1,135 @@
++----------------+       +-------------------+       +--------------------+
+|                |       |                   |       |                    |
+| User's Browser | ----> |   DNS Request     | ----> |   www.foobar.com   |
+| (www.foobar.com)|       |                   |       |   (Public IP)      |
+|                |       |                   |       |                    |
++----------------+       +-------------------+       +---------+----------+
+                                                                 |
+                                                                 |
+                                                                 v
++--------------------------------------------------------------------------------+
+|                             FIREWALL 1                                         |
+|                 (Edge/Network Firewall - Public Facing)                        |
+|                 (Allows HTTPS (443) to Load Balancer only)                     |
++--------------------------------------------------------------------------------+
+                                       |
+                                       | HTTPS (Port 443)
+                                       v
+                     +---------------------------------------+
+                     |             HAProxy                   |
+                     |             (Load Balancer)           |
+                     |             (Server 1)                |
+                     |             SSL Termination           |
+                     +-------------------+-------------------+
+                                         |
+                                         | (Internal Network) HTTP (Port 80)
+                                         v
++--------------------------------------------------------------------------------+
+|                             FIREWALL 2                                         |
+|                 (Internal/DMZ Firewall - Between LB and Web Servers)           |
+|                 (Allows HTTP (80) from LB to Web Servers only)                 |
++--------------------------------------------------------------------------------+
+                                       |
+                                       |
+                   +-------------------+-------------------+
+                   |                   |                   |
+                   v                   v                   v
+         +----------------+    +----------------+    +----------------+
+         | Nginx Web Server |  | Application Server 1 | Application Server 2 |
+         | (Server 1)     |  | (Server 2)       | (Server 3)       |
+         | (Serves Static)  |  | (Runs your code) | (Runs your code) |
+         | (Internal IP)    |  | (Internal IP)    | (Internal IP)    |
+         |  MONITORING CLIENT |  |  MONITORING CLIENT |  MONITORING CLIENT |
+         +----------------+    +----------------+    +----------------+
+                 ^                               ^
+                 |                               |
+                 | (Internal Network) HTTP (Port 8000/App)
+                 |                               |
+                 +--------------------------------+
+                                   |
+                                   |
++--------------------------------------------------------------------------------+
+|                             FIREWALL 3                                         |
+|                 (Internal/Database Firewall - Between App and DB Servers)      |
+|                 (Allows MySQL (3306) from App Servers to DB only)              |
++--------------------------------------------------------------------------------+
+                                   |
+                                   |
+                                   v
+                         +--------------------------+
+                         |       MySQL Database     |
+                         |      (Primary Node)      |
+                         |       (Server 3)         |
+                         |      (Internal IP)       |
+                         +------------+-------------+
+                                      |
+                                      | MySQL Replication (3306)
+                                      v
+                         +--------------------------+
+                         |       MySQL Database     |
+                         |     (Replica Node)       |
+                         |       (Server 3)         |
+                         |     (Internal IP)        |
+                         +--------------------------+```
+
+### II. Explanation of Each Additional Element and its Purpose
+
+This design significantly improves security and visibility compared to the previous one.
+
+1.  **3 Firewalls:**
+    *   **Why added:** Firewalls act as a security barrier, controlling incoming and outgoing network traffic based on predefined security rules. They are essential for protecting your servers from unauthorized access and malicious attacks.
+    *   **Specific Firewalls:**
+        *   **Firewall 1 (Edge/Network Firewall):** Placed at the very edge of the network, protecting the public-facing Load Balancer. It only allows necessary traffic (e.g., HTTPS on port 443) from the internet to your infrastructure.
+        *   **Firewall 2 (Internal/DMZ Firewall):** Placed between the Load Balancer/Web Server and the Application Servers. It ensures that only traffic originating from the web server (e.g., on specific application ports like 80/8000) can reach the application layer, preventing direct access from the internet.
+        *   **Firewall 3 (Internal/Database Firewall):** Placed between the Application Servers and the Database Server. It ensures that only traffic from the authorized application servers can reach the database (e.g., on MySQL port 3306), preventing direct database access from other parts of the network or the internet.
+    *   **What are firewalls for:** Firewalls enforce security policies, filter packets based on source/destination IP addresses, ports, and protocols, and log connection attempts. They prevent unauthorized access, reduce the attack surface, and protect internal resources.
+
+2.  **1 SSL Certificate:**
+    *   **Why added:** An SSL (Secure Sockets Layer) certificate (or its successor, TLS - Transport Layer Security) enables encrypted communication over HTTPS.
+    *   **Why traffic is served over HTTPS:**
+        *   **Data Encryption:** Encrypts all data transmitted between the client's browser and the web server, protecting sensitive information (login credentials, personal data) from eavesdropping and interception.
+        *   **Data Integrity:** Ensures that data is not tampered with during transmission.
+        *   **Authentication/Trust:** Verifies the identity of the server to the client, assuring users that they are connecting to the legitimate `www.foobar.com` and not a malicious impersonator. It also contributes to SEO (Search Engine Optimization) as search engines favor HTTPS sites.
+    *   **Placement:** The SSL certificate is installed on the HAProxy Load Balancer (or the Nginx Web Server), which performs SSL termination.
+
+3.  **3 Monitoring Clients (Data Collector):**
+    *   **Why added:** Monitoring clients (often agents or daemons) are deployed on each server to collect various metrics and logs. This data is then sent to a central monitoring service (like Sumologic, Prometheus, Datadog, etc.) for analysis, visualization, and alerting.
+    *   **What monitoring is used for:**
+        *   **Performance Tracking:** Understanding resource utilization (CPU, RAM, disk I/O, network throughput) and application-specific metrics.
+        *   **Health Checks:** Detecting outages or degraded performance of servers, applications, and the database.
+        *   **Alerting:** Notifying administrators of critical issues (e.g., server down, high error rates, low disk space).
+        *   **Troubleshooting:** Providing logs and metrics to diagnose problems quickly.
+        *   **Capacity Planning:** Understanding trends to anticipate future resource needs and plan for scaling.
+    *   **How the monitoring tool collects data:** Monitoring clients (e.g., `node_exporter` for Prometheus, `filebeat`/`metricbeat` for ELK stack, or Sumologic's collectors) run continuously on each server. They collect data like:
+        *   **System Metrics:** CPU usage, memory usage, disk I/O, network traffic.
+        *   **Application Metrics:** Request rates, response times, error counts, active users (often collected via application-specific libraries or middleware).
+        *   **Logs:** Application logs, web server access/error logs, database logs.
+        *   This collected data is then pushed or pulled (depending on the monitoring system architecture) to a centralized monitoring server or service.
+    *   **How to monitor web server QPS (Queries Per Second / Requests Per Second):**
+        To monitor QPS (Requests Per Second) for Nginx, you would typically configure Nginx to emit access logs (which it does by default). The monitoring client (e.g., a log shipper like Filebeat or Fluentd) would then:
+        1.  Read the Nginx access logs.
+        2.  Parse each log entry to extract relevant information (timestamp, request method, URL, status code).
+        3.  Send these parsed log entries to the central monitoring system.
+        The monitoring system can then aggregate these logs over time, count the number of requests per second, and display it as a QPS metric on a dashboard. For real-time metrics, Nginx's stub_status module can also be enabled and scraped by a metric collector to get current request statistics.
+
+### III. Issues with this Infrastructure
+
+While improved, this infrastructure still has several areas for improvement and potential weaknesses:
+
+1.  **Why terminating SSL at the Load Balancer level is an issue:**
+    *   **Security Risk (Internal Traffic):** If SSL is terminated at the load balancer, traffic between the load balancer and the web/application servers is typically unencrypted (HTTP). While this is on an internal network, a compromise of the load balancer or any internal server could allow an attacker to eavesdrop on unencrypted traffic between components.
+    *   **Reduced End-to-End Encryption:** True end-to-end encryption means traffic is encrypted from the client's browser all the way to the application server. Terminating at the LB breaks this chain.
+    *   **Compliance:** Some strict compliance requirements (e.g., PCI DSS for payment data) might require encryption for all internal communication paths.
+    *   **Complexity:** Managing certificates on a single load balancer might seem simpler, but it centralizes a critical security component.
+
+2.  **Why having only one MySQL server capable of accepting writes is an issue:**
+    *   **Single Point of Failure (SPOF) for Writes:** The Primary MySQL database is still a SPOF for all write operations. If the Primary node fails, your application cannot write new data until the Primary is restored or a Replica is manually promoted (failover). This will lead to downtime for any features requiring data modification.
+    *   **Limited Write Scalability:** All write traffic is directed to a single server, limiting the overall write throughput of your database. You cannot scale writes horizontally by adding more Primary nodes in a simple Primary-Replica setup.
+
+3.  **Why having servers with all the same components (database, web server and application server) might be a problem:**
+    *   **Overlapping Responsibilities/Resource Contention:** If a single server hosts Nginx, the application server, and the database (as implied in some less-than-ideal monolithic setups or if server 3 hosts app and db), it can lead to resource contention (CPU, memory, I/O) between these different workloads. This can degrade performance for all services.
+    *   **Difficulty in Scaling Individually:** You cannot scale specific components independently. If your application needs more compute for its logic, but the database is fine, you're forced to scale the entire server, which is inefficient.
+    *   **Security Principle of Least Privilege:** Placing all components on the same server means that a compromise of one component (e.g., the web server) could potentially give an attacker access to all other components on that same machine, including the database, which is a major security risk.
+    *   **Maintenance Complexity:** Updates or maintenance on one component might require downtime for all other components on that server.
+
+---

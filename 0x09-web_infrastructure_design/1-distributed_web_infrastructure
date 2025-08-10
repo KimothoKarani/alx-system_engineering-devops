@@ -1,0 +1,61 @@
++----------------+       +-------------------+       +--------------------+
+|                |       |                   |       |                    |
+| User's Browser | ----> |   DNS Request     | ----> |   www.foobar.com   |
+| (www.foobar.com)|       |                   |       |   (Public IP)      |
+|                |       |                   |       |                    |
++----------------+       +-------------------+       +---------+----------+
+                                                                 |
+                                                                 | HTTPS (Missing)
+                                                                 | (Currently HTTP)
+                                                                 v
++--------------------------------------------------------------------------------+
+|                             Firewall (Missing)                                 |
++--------------------------------------------------------------------------------+
+                                       |
+                                       |
+                                       v
+                     +---------------------------------------+
+                     |             HAProxy                   |
+                     |             (Load Balancer)           |
+                     |             (1 Server)                |
+                     |      Public IP (if dedicated LB)      |
+                     +-------------------+-------------------+
+                                         |
+                                         |   (Internal Network)
+                                         v
+         +-----------------------------------------------------------+
+         |                                                           |
+         |         +----------------+         +----------------+     |
+         |         |                |         |                |     |
+         |         | Nginx Web Server |       | Application Server 2 |
+         |         | (Serves Static,   |       | (Runs your code)    |
+         |         | Proxy to App)    |       | (Internal IP)       |
+         |         | (Internal IP)    |       |                     |
+         |         +----------------+         +----------------+     |
+         |                 ^                          ^              |
+         |                 |                          |              |
+         |                 | (Internal Network)       |              |
+         |                 v                          v              |
+         |         +----------------+         +----------------+     |
+         |         | Application Server 1 |       | Application Files  |
+         |         | (Runs your code)    |       | (Codebase)         |
+         |         | (Internal IP)       |       |                    |
+         |         +----------------+         +----------------+     |
+         |                                                           |
+         +-----------------------------------------------------------+
+                                   |
+                                   | (Internal Network)
+                                   v
+                         +--------------------------+
+                         |       MySQL Database     |
+                         |  (Primary/Replica Cluster)|
+                         |   (Internal IP)          |
+                         +------------+-------------+
+                                      |
+                                      | (Internal Network for Replication)
+                                      v
+                         +--------------------------+
+                         |       MySQL Database     |
+                         |     (Replica Node)       |
+                         |     (Internal IP)        |
+                         +--------------------------+
